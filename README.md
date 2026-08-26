@@ -22,13 +22,13 @@ Create and position drop zones directly on your image.
 
 ### Category Sorting
 
-![Category sorting](https://i.postimg.cc/vZD0rgKh/3.gif)
+![Category sorting](https://i.postimg.cc/G3MRdfWt/3.gif)
 
 Sort answers into the correct categories.
 
 ### Interactive Review
 
-![Interactive review](https://i.postimg.cc/sXCKCn2G/4.gif)
+![Interactive review](https://i.postimg.cc/3xK1S1ZS/7.gif)
 
 Get feedback while actively recalling the answer.
 
