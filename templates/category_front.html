@@ -1,0 +1,432 @@
+<script>
+function toggleImage(btn){
+  var arena = document.getElementById('catArena');
+  var extra = document.getElementById('cat-extra-img-wrap');
+  if(!arena || !extra) return;
+  var isSwapped = extra.style.display !== 'none';
+  if(isSwapped){
+    arena.style.display = '';
+    extra.style.display = 'none';
+    if(btn) btn.classList.remove('active');
+  } else {
+    arena.style.display = 'none';
+    extra.style.display = 'flex';
+    if(btn) btn.classList.add('active');
+  }
+}
+function toggleExtra(btn){
+  var source = document.getElementById('extra-src');
+  var area = document.getElementById('extra-area');
+  if(!source || !area) return;
+  var isActive = area.classList.contains('show');
+  if(isActive){
+    area.innerHTML = '';
+    area.classList.remove('show');
+    if(btn) btn.classList.remove('active');
+  } else {
+    area.innerHTML = '<div class="extra-body">' + source.innerHTML + '</div>';
+    area.classList.add('show');
+    if(btn) btn.classList.add('active');
+  }
+}
+function toggle(id, btn){
+  if(id === 'fimg' || id === 'bimg') toggleImage(btn);
+  else toggleExtra(btn);
+}
+</script>
+<div class="vp">
+  {{#Front Image}}<div id="fimg" class="ms">{{Front Image}}</div>{{/Front Image}}
+  {{#Extra}}<div id="extra-src" class="ms">{{Extra}}</div>{{/Extra}}
+
+  <div class="ctrl">
+    {{#Front Audio}}<div class="audio-btn">{{Front Audio}}</div>{{/Front Audio}}
+    <button type="button" id="cat-undo-btn" class="ibtn" style="display:none;" onclick="_catUndo(event)" title="Undo last placement (Ctrl+Z / ⌘Z)">undo</button>
+    {{#Front Image}}
+    <button type="button" class="ibtn" data-label="image" onclick="toggleImage(this)" title="Image">image</button>
+    {{/Front Image}}
+    {{#Extra}}
+    <button type="button" class="ibtn" data-label="extra" onclick="toggleExtra(this)" title="Extra">extra</button>
+    {{/Extra}}
+  </div>
+
+  <span id="cat-categories" style="display:none">{{Categories}}</span>
+  <span id="cat-items" style="display:none">{{Items}}</span>
+  <span id="cat-distractors" style="display:none">{{Distractors}}</span>
+  <span id="cat-layout" style="display:none">{{Layout}}</span>
+
+  <div class="ddi-wrap cat-wrap {{#Layout}}layout-{{Layout}}{{/Layout}}">
+    <div class="upper-locked">
+      <div class="meta">{{Title}}</div>
+      <h1 class="question">{{Question}}</h1>
+      <div class="categories-arena" id="catArena"></div>
+      {{#Front Image}}<div id="cat-extra-img-wrap" class="cat-swapped-img-arena" style="display:none;">{{Front Image}}</div>{{/Front Image}}
+    </div>
+    <div class="lower-flexible">
+      <div class="label-pool" id="catPool"></div>
+    </div>
+  </div>
+
+  <div id="extra-area" class="extra-area"></div>
+</div>
+
+<script>
+function _catInit(){
+  try {
+    var isDark = document.body.classList.contains('night_mode') || 
+                 document.body.classList.contains('nightMode') || 
+                 document.documentElement.classList.contains('night_mode') || 
+                 document.documentElement.classList.contains('nightMode');
+    if (!isDark && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.setAttribute('data-anki-light', 'true');
+    }
+  } catch(e){}
+
+  function decodeEntities(str){
+    var d = document.createElement('div');
+    d.innerHTML = str;
+    return d.textContent || d.innerText || str;
+  }
+  function stripTags(str){
+    var d = document.createElement('div');
+    d.innerHTML = str;
+    return d.textContent || d.innerText || '';
+  }
+  function splitField(str){
+    str = decodeEntities(str); str = stripTags(str);
+    var parts = str.split('|');
+    if(parts.length <= 1) parts = str.split('&#124;');
+    return parts.map(function(s){ return s.trim(); }).filter(Boolean);
+  }
+  function parseItems(str){
+    str = decodeEntities(str); str = stripTags(str);
+    var parts = str.split('|');
+    if(parts.length <= 1) parts = str.split('&#124;');
+    var result = [];
+    parts.forEach(function(p){
+      p = p.trim();
+      if(!p) return;
+      var eq = p.indexOf('=');
+      if(eq > 0){
+        result.push({ item: p.slice(0, eq).trim(), category: p.slice(eq + 1).trim() });
+      }
+    });
+    return result;
+  }
+
+  var CARD_KEY = ("{{Title}}_{{Question}}").replace(/[^a-zA-Z0-9]/g, '_');
+  var categories = splitField(document.getElementById('cat-categories')?.innerHTML || '');
+  var items = parseItems(document.getElementById('cat-items')?.innerHTML || '');
+  var distractors = splitField(document.getElementById('cat-distractors')?.innerHTML || '');
+  var rawLayout = (decodeEntities(stripTags(document.getElementById('cat-layout')?.innerHTML || '')) || 'horizontal').trim().toLowerCase();
+
+  var poolLabels = items.map(function(i){ return i.item; }).concat(distractors);
+
+  // Shuffle pool labels
+  for (var i = poolLabels.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var temp = poolLabels[i];
+    poolLabels[i] = poolLabels[j];
+    poolLabels[j] = temp;
+  }
+
+  var arena = document.getElementById('catArena');
+  var pool = document.getElementById('catPool');
+  if(!arena || !pool) return;
+  arena.innerHTML = '';
+  pool.innerHTML = '';
+
+  if(rawLayout === 'vertical'){
+    arena.className = 'categories-arena cat-arena-vertical';
+  } else {
+    arena.className = 'categories-arena cat-arena-horizontal';
+  }
+
+  var placedState = {};
+  var history = [];
+  var selectedChip = null;
+  var draggedItem = null;
+
+  categories.forEach(function(cat){
+    var box = document.createElement('div');
+    box.className = 'cat-box';
+    box.setAttribute('data-category', cat);
+
+    var header = document.createElement('div');
+    header.className = 'cat-header';
+    header.textContent = cat;
+    box.appendChild(header);
+
+    var dropArea = document.createElement('div');
+    dropArea.className = 'cat-drop-area';
+    dropArea.setAttribute('data-category', cat);
+
+    dropArea.addEventListener('dragover', function(e){ 
+      e.preventDefault(); 
+      dropArea.classList.add('cat-drop-hover'); 
+    });
+    dropArea.addEventListener('dragleave', function(e){ 
+      if(!dropArea.contains(e.relatedTarget)){
+        dropArea.classList.remove('cat-drop-hover');
+      }
+    });
+    dropArea.addEventListener('drop', function(e){
+      e.preventDefault();
+      dropArea.classList.remove('cat-drop-hover');
+      var itemText = e.dataTransfer.getData('text/plain') || draggedItem;
+      if(itemText) placeItem(itemText, cat);
+      draggedItem = null;
+    });
+
+    dropArea.addEventListener('click', function(e){
+      if(selectedChip){
+        var itemText = selectedChip.getAttribute('data-item');
+        if(itemText) placeItem(itemText, cat);
+        selectedChip.classList.remove('chip-selected');
+        selectedChip = null;
+        updateCues();
+      }
+    });
+
+    box.appendChild(dropArea);
+    arena.appendChild(box);
+  });
+
+  function updateUndoBtn(){
+    var undoBtn = document.getElementById('cat-undo-btn');
+    if(undoBtn) undoBtn.style.display = history.length > 0 ? 'inline-flex' : 'none';
+  }
+
+  function saveState(){
+    var state = { key: CARD_KEY, placed: placedState };
+    try { location.hash = 'ddcat=' + encodeURIComponent(JSON.stringify(state)); } catch(e){}
+    try { sessionStorage.setItem('ddcat', JSON.stringify(state)); } catch(e){}
+    try { sessionStorage.setItem('ddcat_' + CARD_KEY, JSON.stringify(state)); } catch(e){}
+    try { sessionStorage.setItem('ddi', JSON.stringify(state)); } catch(e){}
+    updateUndoBtn();
+  }
+
+  function placeItem(itemText, cat){
+    if(placedState[itemText] === cat) return;
+    history.push({ item: itemText, from: placedState[itemText] || null, to: cat });
+    placedState[itemText] = cat;
+    renderAll();
+    saveState();
+  }
+
+  function unplaceItem(itemText){
+    if(placedState[itemText]){
+      history.push({ item: itemText, from: placedState[itemText], to: null });
+      delete placedState[itemText];
+      renderAll();
+      saveState();
+    }
+  }
+
+  window._catUndo = function(e){
+    if(e && e.stopPropagation) e.stopPropagation();
+    var last = history.pop();
+    if(!last) return;
+    if(last.from){
+      placedState[last.item] = last.from;
+    } else {
+      delete placedState[last.item];
+    }
+    selectedChip = null;
+    renderAll();
+    saveState();
+  };
+
+  function updateCues(){
+    var hasSel = !!selectedChip;
+    document.querySelectorAll('.cat-drop-area').forEach(function(da){
+      if(hasSel){
+        da.classList.add('cat-drop-cue');
+      } else {
+        da.classList.remove('cat-drop-cue');
+      }
+    });
+  }
+
+  function renderAll(){
+    pool.innerHTML = '';
+    document.querySelectorAll('.cat-drop-area').forEach(function(da){ da.innerHTML = ''; });
+
+    var unplacedCount = 0;
+    poolLabels.forEach(function(label){
+      var placedCat = placedState[label];
+      var chip = document.createElement('div');
+      chip.className = 'chip';
+      chip.textContent = label;
+      chip.setAttribute('data-item', label);
+      chip.setAttribute('draggable', 'true');
+
+      chip.addEventListener('dragstart', function(e){
+        draggedItem = label;
+        e.dataTransfer.setData('text/plain', label);
+        setTimeout(function(){ chip.style.opacity = '.3'; }, 0);
+      });
+      chip.addEventListener('dragend', function(){
+        chip.style.opacity = '1';
+        draggedItem = null;
+      });
+
+      chip.addEventListener('click', function(e){
+        e.stopPropagation();
+        if(placedCat){
+          // Clicking placed chip: if another chip is selected, place that one; else return this one to pool
+          if(selectedChip && selectedChip !== chip){
+            var itemText = selectedChip.getAttribute('data-item');
+            if(itemText) placeItem(itemText, placedCat);
+            selectedChip.classList.remove('chip-selected');
+            selectedChip = null;
+            updateCues();
+            return;
+          }
+          unplaceItem(label);
+        } else {
+          // In pool: toggle selection
+          if(selectedChip === chip){
+            chip.classList.remove('chip-selected');
+            selectedChip = null;
+          } else {
+            if(selectedChip) selectedChip.classList.remove('chip-selected');
+            selectedChip = chip;
+            chip.classList.add('chip-selected');
+          }
+        }
+        updateCues();
+      });
+
+      if(placedCat){
+        var targetArea = document.querySelector('.cat-drop-area[data-category="' + placedCat + '"]');
+        if(targetArea) targetArea.appendChild(chip);
+      } else {
+        unplacedCount++;
+        pool.appendChild(chip);
+      }
+    });
+
+    if(unplacedCount === 0){
+      var emptyMsg = document.createElement('div');
+      emptyMsg.className = 'empty-pool-msg';
+      emptyMsg.textContent = poolLabels.length === 0 ? 'No items' : 'All items placed · Press Space to check answers';
+      pool.appendChild(emptyMsg);
+    }
+
+    equalizeBoxHeights();
+  }
+
+  function equalizeBoxHeights(){
+    var boxes = document.querySelectorAll('.cat-box');
+    if(!boxes.length) return;
+    var maxH = 120;
+    boxes.forEach(function(b){ b.style.minHeight = ''; });
+    boxes.forEach(function(b){
+      var h = b.getBoundingClientRect().height;
+      if(h > maxH) maxH = h;
+    });
+    boxes.forEach(function(b){ b.style.minHeight = maxH + 'px'; });
+  }
+
+  window.addEventListener('resize', equalizeBoxHeights);
+
+  // Pool drag & drop back
+  pool.addEventListener('dragover', function(e){ 
+    e.preventDefault(); 
+    pool.classList.add('cat-drop-hover');
+  });
+  pool.addEventListener('dragleave', function(e){ 
+    if(!pool.contains(e.relatedTarget)){
+      pool.classList.remove('cat-drop-hover');
+    }
+  });
+  pool.addEventListener('drop', function(e){
+    e.preventDefault();
+    pool.classList.remove('cat-drop-hover');
+    var itemText = e.dataTransfer.getData('text/plain') || draggedItem;
+    if(itemText) unplaceItem(itemText);
+    draggedItem = null;
+  });
+
+  pool.addEventListener('click', function(e){
+    if(e.target === pool && selectedChip){
+      var itemText = selectedChip.getAttribute('data-item');
+      if(itemText) unplaceItem(itemText);
+      selectedChip.classList.remove('chip-selected');
+      selectedChip = null;
+      updateCues();
+    }
+  });
+
+  // Touch handlers for mobile devices
+  var ti = null, tc = null;
+  document.addEventListener('touchstart', function(e){
+    var item = e.target.closest('.chip');
+    if(!item) return;
+    ti = item;
+    var r = item.getBoundingClientRect();
+    tc = item.cloneNode(true);
+    tc.style.cssText = 'position:fixed;z-index:9999;pointer-events:none;opacity:.85;left:' + r.left + 'px;top:' + r.top + 'px;width:' + r.width + 'px;margin:0;';
+    document.body.appendChild(tc);
+    item.style.opacity = '.3';
+  }, { passive: true });
+
+  document.addEventListener('touchmove', function(e){
+    if(!tc) return;
+    e.preventDefault();
+    var t = e.touches[0];
+    tc.style.left = (t.clientX - tc.offsetWidth / 2) + 'px';
+    tc.style.top = (t.clientY - tc.offsetHeight / 2) + 'px';
+    tc.style.display = 'none';
+    var hit = document.elementFromPoint(t.clientX, t.clientY);
+    tc.style.display = '';
+    document.querySelectorAll('.cat-drop-area, #catPool').forEach(function(d){ d.classList.remove('cat-drop-hover'); });
+    var da = hit && hit.closest('.cat-drop-area, #catPool');
+    if(da) da.classList.add('cat-drop-hover');
+  }, { passive: false });
+
+  document.addEventListener('touchend', function(e){
+    if(!ti || !tc) return;
+    var t = e.changedTouches[0];
+    tc.style.display = 'none';
+    var hit = document.elementFromPoint(t.clientX, t.clientY);
+    tc.remove(); tc = null; ti.style.opacity = '1';
+    document.querySelectorAll('.cat-drop-area, #catPool').forEach(function(d){ d.classList.remove('cat-drop-hover'); });
+    var da = hit && hit.closest('.cat-drop-area, #catPool');
+    var label = ti.getAttribute('data-item');
+    if(da && label){
+      if(da.id === 'catPool' || da.classList.contains('label-pool')){
+        unplaceItem(label);
+      } else {
+        var cat = da.getAttribute('data-category');
+        if(cat) placeItem(label, cat);
+      }
+    }
+    ti = null;
+  });
+
+  // Keyboard shortcut listener
+  document.addEventListener('keydown', function(e){
+    if((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z' || e.code === 'KeyZ')){
+      e.preventDefault();
+      window._catUndo();
+      return;
+    }
+    if(e.code === 'Space' || e.key === ' '){
+      e.preventDefault();
+      var btn = document.querySelector('#answer, .btn-primary, [id*="answer"]');
+      if(btn) btn.click();
+      else document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
+    }
+  });
+
+  renderAll();
+  saveState();
+}
+
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', _catInit);
+} else {
+  _catInit();
+}
+</script>

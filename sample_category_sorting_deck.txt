@@ -1,0 +1,6 @@
+#separator:tab
+#html:true
+#notetype:DragDrop
+#tags:biology taxonomy
+Title	Question	Categories	Items	Distractors	Layout	Extra	Front Audio	Back Audio	Front Image	Back Image
+Animal Kingdom · Classification	Sort each creature into its biological class:	Mammals | Birds | Reptiles	Lion=Mammals | Blue Whale=Mammals | Golden Eagle=Birds | Emperor Penguin=Birds | Komodo Dragon=Reptiles | Chameleon=Reptiles	Starfish | Moon Jellyfish	horizontal	Mammals are warm-blooded with mammary glands; birds have feathers and beaks; reptiles are ectothermic with scales.			

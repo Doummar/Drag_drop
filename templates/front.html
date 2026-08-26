@@ -1,0 +1,532 @@
+<script>
+function toggleImage(btn){
+  var main = document.getElementById('main-img-wrap');
+  var extra = document.getElementById('extra-img-wrap');
+  var zones = document.getElementById('zones');
+  if(!main || !extra) return;
+  var isSwapped = extra.style.display !== 'none';
+  if(isSwapped){
+    main.style.display = '';
+    extra.style.display = 'none';
+    if(zones) zones.style.display = '';
+    if(btn) btn.classList.remove('active');
+  } else {
+    main.style.display = 'none';
+    extra.style.display = 'flex';
+    if(zones) zones.style.display = 'none';
+    if(btn) btn.classList.add('active');
+  }
+}
+function toggleExtra(btn){
+  var source = document.getElementById('extra-src');
+  var area = document.getElementById('extra-area');
+  if(!source || !area) return;
+  var isActive = area.classList.contains('show');
+  if(isActive){
+    area.innerHTML = '';
+    area.classList.remove('show');
+    if(btn) btn.classList.remove('active');
+  } else {
+    area.innerHTML = '<div class="extra-body">' + source.innerHTML + '</div>';
+    area.classList.add('show');
+    if(btn) btn.classList.add('active');
+  }
+}
+function toggle(id, btn){
+  if(id === 'fimg' || id === 'bimg') toggleImage(btn);
+  else toggleExtra(btn);
+}
+</script>
+<div class="vp">
+  {{#Front Image}}<div id="fimg" class="ms">{{Front Image}}</div>{{/Front Image}}
+  {{#Extra}}<div id="extra-src" class="ms">{{Extra}}</div>{{/Extra}}
+
+  <div class="ctrl">
+    {{#Front Audio}}<div class="audio-btn">{{Front Audio}}</div>{{/Front Audio}}
+    <button type="button" id="ddi-undo-btn" class="ibtn ddi-undo-btn" style="display:none;" onclick="_ddiUndo(event)" title="Undo last placement (Ctrl+Z / ⌘Z)">undo</button>
+    {{#Front Image}}
+    <button type="button" class="ibtn" data-label="image" onclick="toggleImage(this)" title="Image">image</button>
+    {{/Front Image}}
+    {{#Extra}}
+    <button type="button" class="ibtn" data-label="extra" onclick="toggleExtra(this)" title="Extra">extra</button>
+    {{/Extra}}
+  </div>
+
+  <span id="ddi-labels" style="display:none">{{Labels}}</span>
+  <span id="ddi-zones" style="display:none">{{Zones}}</span>
+  <div class="ddi-wrap {{#Layout}}layout-{{Layout}}{{/Layout}}">
+    <div class="upper-locked">
+      <div class="meta">{{Title}}</div>
+      <h1 class="question">{{Question}}</h1>
+      <div class="img-arena">
+        <div class="img-box" id="imgBox">
+          <div id="main-img-wrap">{{#Image}}{{Image}}{{/Image}}</div>
+          {{#Front Image}}<div id="extra-img-wrap" style="display:none;">{{Front Image}}</div>{{/Front Image}}
+          <div id="zones"></div>
+        </div>
+      </div>
+    </div>
+    <div class="lower-flexible">
+      <div class="label-pool" id="pool"></div>
+    </div>
+  </div>
+
+  <div id="extra-area" class="extra-area"></div>
+</div>
+<script>
+function _ddiInit(){
+// Synchronize Anki theme
+try {
+  var isDark = document.body.classList.contains('night_mode') || 
+               document.body.classList.contains('nightMode') || 
+               document.documentElement.classList.contains('night_mode') || 
+               document.documentElement.classList.contains('nightMode');
+  if (!isDark && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    document.documentElement.setAttribute('data-anki-light', 'true');
+  }
+} catch(e){}
+
+function decodeEntities(str){
+var d=document.createElement('div');
+d.innerHTML=str;
+return d.textContent||d.innerText||str;
+}
+function stripTags(str){
+var d=document.createElement('div');
+d.innerHTML=str;
+return d.textContent||d.innerText||'';
+}
+function splitField(str){
+// Split on pipe - handle both raw | and HTML entity &#124;
+str = decodeEntities(str);
+str = stripTags(str);
+var parts = str.split('|');
+if(parts.length <= 1) parts = str.split('&#124;');
+return parts.map(function(s){
+  var clean = s.trim();
+  var eq = clean.indexOf('=');
+  if (eq > 0) {
+    var after = clean.slice(eq + 1).trim();
+    if (/^[\d\.\,%\s]+$/.test(after)) {
+      clean = clean.slice(0, eq).trim();
+    }
+  }
+  return clean;
+}).filter(Boolean);
+}
+function parseZones(str){
+str = decodeEntities(str);
+str = stripTags(str);
+var parts = str.split('|');
+if(parts.length <= 1) parts = str.split('&#124;');
+var z=[];
+parts.forEach(function(p){
+p=p.trim();
+var idx=p.indexOf('='); if(idx<0)return;
+var lbl=p.slice(0,idx).trim(), xy=p.slice(idx+1).trim().split(',');
+if(xy.length===2){var x=parseFloat(xy[0]),y=parseFloat(xy[1]);if(!isNaN(x)&&!isNaN(y))z.push({label:lbl,x:x,y:y});}
+});
+return z;
+}
+
+// Lock image dimensions to permanently freeze layout
+function lockImageDimensions(){
+  var img = document.querySelector('#imgBox img') || document.querySelector('.img-box img');
+  var box = document.getElementById('imgBox') || document.querySelector('.img-box');
+  var arena = document.querySelector('.img-arena');
+  if(!img || !box || !arena) return;
+
+  function applyLock(){
+    var rect = img.getBoundingClientRect();
+    if(rect.height > 10 && rect.width > 10){
+      var h = Math.round(rect.height) + 'px';
+      var w = Math.round(rect.width) + 'px';
+      box.style.height = h;
+      box.style.width = w;
+      box.style.minHeight = h;
+      box.style.maxHeight = h;
+      arena.style.height = h;
+      arena.style.minHeight = h;
+    }
+  }
+
+  if(img.complete && img.naturalHeight > 0){
+    applyLock();
+  } else {
+    img.addEventListener('load', applyLock, { once: true });
+  }
+}
+lockImageDimensions();
+
+var CARD_KEY = ("ddi_{{Title}}_{{Question}}").slice(0,60);
+// Read from DOM spans - most reliable, Anki always renders span content correctly
+var _labelsEl = document.getElementById("ddi-labels");
+var _zonesEl = document.getElementById("ddi-zones");
+var LABELS = _labelsEl ? splitField(_labelsEl.innerHTML) : [];
+var zones = _zonesEl ? parseZones(_zonesEl.innerHTML) : [];
+
+// Clear stale hash
+try{
+if(location.hash.startsWith('#ddi=')){
+var old=JSON.parse(decodeURIComponent(location.hash.slice(5)));
+if(old.key!==CARD_KEY) location.hash='';
+} else { location.hash=''; }
+}catch(e){ location.hash=''; }
+
+function shuffle(a){
+a=a.slice();
+for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1)),t=a[i];a[i]=a[j];a[j]=t;}
+return a;
+}
+
+var zc=document.getElementById('zones');
+if(zones.length === 0){
+  var emptyZ=document.createElement('div');
+  emptyZ.className='empty-state-badge';
+  emptyZ.textContent='No drop zones';
+  zc.appendChild(emptyZ);
+} else {
+  zones.forEach(function(z){
+  var dz=document.createElement('div');
+  dz.className='dz'; dz.dataset.label=z.label;
+  dz.style.left=z.x+'%'; dz.style.top=z.y+'%';
+  var cue=document.createElement('span');
+  cue.className='dz-empty-cue';
+  dz.appendChild(cue);
+  zc.appendChild(dz);
+  });
+}
+
+var pool=document.getElementById('pool');
+shuffle(LABELS).forEach(function(v){
+var c=document.createElement('div');
+c.className='chip'; c.draggable=true; c.dataset.v=v; c.textContent=v;
+pool.appendChild(c);
+});
+
+function updatePoolEmptyState(){
+  if(!pool) return;
+  var remaining = pool.querySelectorAll('.chip').length;
+  var emptyMsg = pool.querySelector('.empty-pool-msg');
+  if(remaining === 0){
+    if(!emptyMsg){
+      emptyMsg = document.createElement('div');
+      emptyMsg.className = 'empty-pool-msg';
+      emptyMsg.textContent = LABELS.length === 0 ? 'No labels' : 'No labels in pool';
+      pool.appendChild(emptyMsg);
+    }
+  } else {
+    if(emptyMsg) emptyMsg.remove();
+  }
+}
+updatePoolEmptyState();
+
+// Undo History Management
+var historyStack = [];
+function pushHistory(){
+  var snapshot = [];
+  document.querySelectorAll('.chip').forEach(function(c){
+    snapshot.push({ el: c, parent: c.parentElement });
+  });
+  historyStack.push(snapshot);
+  updateUndoBtn();
+}
+
+window._ddiUndo = function(e){
+  if(e && e.preventDefault) e.preventDefault();
+  undo();
+};
+
+function undo(){
+  if(historyStack.length === 0) return;
+  var snapshot = historyStack.pop();
+  snapshot.forEach(function(item){
+    item.parent.appendChild(item.el);
+    item.el.classList.remove('chip-selected');
+  });
+  if(selectedChip){
+    selectedChip.classList.remove('chip-selected');
+    selectedChip = null;
+  }
+  updateZoneVisualCues();
+  updatePoolEmptyState();
+  updateUndoBtn();
+  save();
+}
+
+function updateUndoBtn(){
+  var btn = document.getElementById('ddi-undo-btn');
+  if(btn){
+    btn.style.display = historyStack.length > 0 ? 'inline-flex' : 'none';
+  }
+}
+
+function save(){
+var state={key:CARD_KEY,placed:{}};
+document.querySelectorAll('.dz').forEach(function(d){
+var c=d.querySelector('.chip'); if(c) state.placed[d.dataset.label]=c.dataset.v;
+});
+try{ location.hash='ddi='+encodeURIComponent(JSON.stringify(state)); }catch(e){}
+try{ sessionStorage.setItem('ddi',JSON.stringify(state)); }catch(e){}
+}
+
+var hov=null;
+document.addEventListener('dragover',function(e){
+e.preventDefault();
+var dz=e.target.closest('.dz');
+if(dz!==hov){ if(hov)hov.classList.remove('dz-hover'); hov=dz; if(hov)hov.classList.add('dz-hover'); }
+});
+document.addEventListener('dragleave',function(e){
+if(hov&&!hov.contains(e.relatedTarget)){hov.classList.remove('dz-hover');hov=null;}
+});
+
+var drag=null;
+document.addEventListener('dragstart',function(e){
+if(!e.target.classList.contains('chip'))return;
+drag=e.target; setTimeout(function(){if(drag)drag.style.opacity='.3';},0);
+});
+document.addEventListener('dragend',function(e){
+if(e.target.classList.contains('chip'))e.target.style.opacity='1';
+if(hov){hov.classList.remove('dz-hover');hov=null;}
+});
+
+// Drop event with clean swapping & history recording
+document.addEventListener('drop',function(e){
+e.preventDefault();
+if(hov){hov.classList.remove('dz-hover');hov=null;}
+var t=e.target.closest('.dz,#pool');
+if(!t||!drag)return;
+if(drag.parentElement === t) return;
+
+pushHistory();
+var fromDz=drag.closest('.dz');
+if(t.classList.contains('dz')){
+  var ex=t.querySelector('.chip');
+  if(ex && ex !== drag){
+    ex.style.opacity='1';
+    ex.classList.remove('chip-selected');
+    if(fromDz){
+      // Clean swap: target chip moves to origin zone
+      fromDz.appendChild(ex);
+    } else {
+      // Came from pool: displaced chip returns to pool
+      pool.appendChild(ex);
+    }
+  }
+}
+t.appendChild(drag);
+if(selectedChip){
+  selectedChip.classList.remove('chip-selected');
+  selectedChip=null;
+}
+updateZoneVisualCues();
+updatePoolEmptyState();
+save();
+});
+
+// Click-to-place support with clear selection feedback & zone cues
+var selectedChip=null;
+
+function updateZoneVisualCues(){
+  var zc = document.getElementById('zones');
+  if(!zc) return;
+  if(selectedChip){
+    zc.classList.add('has-selected-chip');
+    document.querySelectorAll('.dz').forEach(function(d){
+      var c = d.querySelector('.chip');
+      var cue = d.querySelector('.dz-empty-cue');
+      if(!c){
+        d.classList.add('dz-cue-target');
+        if(cue) cue.textContent = 'place here';
+      } else {
+        d.classList.remove('dz-cue-target');
+        if(cue) cue.textContent = '';
+      }
+    });
+  } else {
+    zc.classList.remove('has-selected-chip');
+    document.querySelectorAll('.dz').forEach(function(d){
+      d.classList.remove('dz-cue-target');
+      var cue = d.querySelector('.dz-empty-cue');
+      if(cue) cue.textContent = '';
+    });
+  }
+}
+
+document.addEventListener('click',function(e){
+var chip=e.target.closest('.chip');
+var dz=e.target.closest('.dz,#pool');
+
+if(chip){
+  var parentDz=chip.closest('.dz');
+  if(selectedChip && selectedChip !== chip){
+    if(parentDz){
+      // User clicked on an occupied zone while a chip is selected -> place and swap!
+      pushHistory();
+      var fromDz=selectedChip.closest('.dz');
+      var ex=chip;
+      ex.style.opacity='1';
+      ex.classList.remove('chip-selected');
+      if(fromDz){
+        fromDz.appendChild(ex);
+      } else {
+        pool.appendChild(ex);
+      }
+      parentDz.appendChild(selectedChip);
+      selectedChip.classList.remove('chip-selected');
+      selectedChip=null;
+      updateZoneVisualCues();
+      updatePoolEmptyState();
+      save();
+      return;
+    }
+    // Clicked another chip in the pool -> switch selection
+    selectedChip.classList.remove('chip-selected');
+    selectedChip=chip;
+    chip.classList.add('chip-selected');
+    updateZoneVisualCues();
+    return;
+  }
+  if(parentDz && !selectedChip){
+    // Clicking a placed chip in a zone selects it to move
+    selectedChip=chip;
+    chip.classList.add('chip-selected');
+    updateZoneVisualCues();
+    return;
+  }
+  // Clicking a chip in the pool toggles selection
+  if(selectedChip===chip){
+    chip.classList.remove('chip-selected');
+    selectedChip=null;
+  } else {
+    if(selectedChip) selectedChip.classList.remove('chip-selected');
+    selectedChip=chip;
+    chip.classList.add('chip-selected');
+  }
+  updateZoneVisualCues();
+  return;
+}
+
+if(dz && selectedChip){
+  var fromContainer=selectedChip.parentElement;
+  if(dz.id==='pool'||dz.classList.contains('label-pool')){
+    if(fromContainer !== pool){
+      pushHistory();
+      selectedChip.style.opacity='1';
+      selectedChip.classList.remove('chip-selected');
+      pool.appendChild(selectedChip);
+      selectedChip=null;
+      updateZoneVisualCues();
+      updatePoolEmptyState();
+      save();
+    } else {
+      selectedChip.classList.remove('chip-selected');
+      selectedChip=null;
+      updateZoneVisualCues();
+    }
+    return;
+  }
+  if(dz.classList.contains('dz')){
+    if(fromContainer !== dz){
+      pushHistory();
+      var fromDz=selectedChip.closest('.dz');
+      var ex=dz.querySelector('.chip');
+      if(ex && ex !== selectedChip){
+        ex.style.opacity='1';
+        ex.classList.remove('chip-selected');
+        if(fromDz){
+          fromDz.appendChild(ex);
+        } else {
+          pool.appendChild(ex);
+        }
+      }
+      dz.appendChild(selectedChip);
+      selectedChip.classList.remove('chip-selected');
+      selectedChip=null;
+      updateZoneVisualCues();
+      updatePoolEmptyState();
+      save();
+    } else {
+      selectedChip.classList.remove('chip-selected');
+      selectedChip=null;
+      updateZoneVisualCues();
+    }
+    return;
+  }
+}
+});
+
+var ti=null,tc=null;
+document.addEventListener('touchstart',function(e){
+var item=e.target.closest('.chip'); if(!item)return;
+ti=item; var r=item.getBoundingClientRect();
+tc=item.cloneNode(true);
+tc.style.cssText='position:fixed;z-index:9999;pointer-events:none;opacity:.85;left:'+r.left+'px;top:'+r.top+'px;width:'+r.width+'px;margin:0;';
+document.body.appendChild(tc); item.style.opacity='.3';
+},{passive:true});
+document.addEventListener('touchmove',function(e){
+if(!tc)return; e.preventDefault();
+var t=e.touches[0];
+tc.style.left=(t.clientX-tc.offsetWidth/2)+'px';
+tc.style.top=(t.clientY-tc.offsetHeight/2)+'px';
+tc.style.display='none';
+var hit=document.elementFromPoint(t.clientX,t.clientY);
+tc.style.display='';
+document.querySelectorAll('.dz').forEach(function(d){d.classList.remove('dz-hover');});
+var dz=hit&&hit.closest('.dz'); if(dz)dz.classList.add('dz-hover');
+},{passive:false});
+document.addEventListener('touchend',function(e){
+if(!ti||!tc)return;
+var t=e.changedTouches[0];
+tc.style.display='none';
+var hit=document.elementFromPoint(t.clientX,t.clientY);
+tc.remove();tc=null;ti.style.opacity='1';
+document.querySelectorAll('.dz').forEach(function(d){d.classList.remove('dz-hover');});
+var dz=hit&&hit.closest('.dz,#pool');
+if(dz){
+var fromContainer = ti.parentElement;
+if(fromContainer !== dz){
+  pushHistory();
+  var fromDz=ti.closest('.dz');
+  if(dz.classList.contains('dz')){
+    var ex=dz.querySelector('.chip');
+    if(ex && ex !== ti){
+      ex.style.opacity='1';
+      ex.classList.remove('chip-selected');
+      if(fromDz){
+        fromDz.appendChild(ex);
+      } else {
+        pool.appendChild(ex);
+      }
+    }
+  }
+  dz.appendChild(ti);
+  if(selectedChip){
+    selectedChip.classList.remove('chip-selected');
+    selectedChip=null;
+  }
+  updateZoneVisualCues();
+  updatePoolEmptyState();
+  save();
+}
+}
+ti=null;
+});
+
+// Keyboard listener for Space (flip) and Ctrl+Z / Cmd+Z (undo)
+document.addEventListener('keydown',function(e){
+if((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z' || e.code === 'KeyZ')){
+  e.preventDefault();
+  undo();
+  return;
+}
+if(e.code==='Space'||e.key===' '){
+  e.preventDefault();
+  var btn=document.querySelector('#answer,.btn-primary,[id*="answer"]');
+  if(btn)btn.click();
+  else document.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',keyCode:13,bubbles:true}));
+}
+});
+}
+_ddiInit();
+</script>

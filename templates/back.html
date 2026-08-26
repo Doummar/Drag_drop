@@ -1,0 +1,227 @@
+<script>
+function toggleImage(btn){
+  var main = document.getElementById('main-img-wrap');
+  var extra = document.getElementById('extra-img-wrap');
+  var zones = document.getElementById('zones');
+  if(!main || !extra) return;
+  var isSwapped = extra.style.display !== 'none';
+  if(isSwapped){
+    main.style.display = '';
+    extra.style.display = 'none';
+    if(zones) zones.style.display = '';
+    if(btn) btn.classList.remove('active');
+  } else {
+    main.style.display = 'none';
+    extra.style.display = 'flex';
+    if(zones) zones.style.display = 'none';
+    if(btn) btn.classList.add('active');
+  }
+}
+function toggleExtra(btn){
+  var source = document.getElementById('extra-src');
+  var area = document.getElementById('extra-area');
+  if(!source || !area) return;
+  var isActive = area.classList.contains('show');
+  if(isActive){
+    area.innerHTML = '';
+    area.classList.remove('show');
+    if(btn) btn.classList.remove('active');
+  } else {
+    area.innerHTML = '<div class="extra-body">' + source.innerHTML + '</div>';
+    area.classList.add('show');
+    if(btn) btn.classList.add('active');
+  }
+}
+function toggle(id, btn){
+  if(id === 'fimg' || id === 'bimg') toggleImage(btn);
+  else toggleExtra(btn);
+}
+</script>
+<div class="vp">
+  {{#Back Image}}<div id="bimg" class="ms">{{Back Image}}</div>{{/Back Image}}
+  {{#Extra}}<div id="extra-src" class="ms">{{Extra}}</div>{{/Extra}}
+
+  <div class="ctrl">
+    {{#Back Audio}}<div class="audio-btn">{{Back Audio}}</div>{{/Back Audio}}
+    {{#Back Image}}
+    <button type="button" class="ibtn" data-label="image" onclick="toggleImage(this)" title="Image">image</button>
+    {{/Back Image}}
+    {{#Extra}}
+    <button type="button" class="ibtn" data-label="extra" onclick="toggleExtra(this)" title="Extra">extra</button>
+    {{/Extra}}
+  </div>
+
+  <span id="ddi-labels" style="display:none">{{Labels}}</span>
+  <span id="ddi-zones" style="display:none">{{Zones}}</span>
+  <div class="ddi-wrap {{#Layout}}layout-{{Layout}}{{/Layout}}">
+    <div class="upper-locked">
+      <div class="meta">{{Title}}</div>
+      <h1 class="question">{{Question}}</h1>
+      <div class="img-arena">
+        <div class="img-box" id="imgBox">
+          <div id="main-img-wrap">{{#Image}}{{Image}}{{/Image}}</div>
+          {{#Back Image}}<div id="extra-img-wrap" style="display:none;">{{Back Image}}</div>{{/Back Image}}
+          <div id="zones"></div>
+        </div>
+      </div>
+    </div>
+    <div class="lower-flexible">
+      <div class="label-pool" id="pool"></div>
+      <div class="back-body">
+        <div class="section-label">Resultat</div>
+        <div id="scoreBox"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="extra-area" class="extra-area"></div>
+</div>
+<script>
+(function(){
+// Synchronize Anki theme
+try {
+  var isDark = document.body.classList.contains('night_mode') || 
+               document.body.classList.contains('nightMode') || 
+               document.documentElement.classList.contains('night_mode') || 
+               document.documentElement.classList.contains('nightMode');
+  if (!isDark && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    // If OS prefers dark but Anki's body does NOT have night_mode, force light mode tag
+    document.documentElement.setAttribute('data-anki-light', 'true');
+  }
+} catch(e){}
+
+function decodeEntities(str){
+var d=document.createElement('div'); d.innerHTML=str;
+return d.textContent||d.innerText||str;
+}
+function stripTags(str){
+var d=document.createElement('div'); d.innerHTML=str;
+return d.textContent||d.innerText||'';
+}
+function splitField(str){
+str=decodeEntities(str); str=stripTags(str);
+var parts=str.split('|');
+if(parts.length<=1) parts=str.split('&#124;');
+return parts.map(function(s){return s.trim();}).filter(Boolean);
+}
+function parseZones(str){
+str=decodeEntities(str); str=stripTags(str);
+var parts=str.split('|');
+if(parts.length<=1) parts=str.split('&#124;');
+var z=[];
+parts.forEach(function(p){
+p=p.trim();
+var idx=p.indexOf('='); if(idx<0)return;
+var lbl=p.slice(0,idx).trim(), xy=p.slice(idx+1).trim().split(',');
+if(xy.length===2){var x=parseFloat(xy[0]),y=parseFloat(xy[1]);if(!isNaN(x)&&!isNaN(y))z.push({label:lbl,x:x,y:y});}
+});
+return z;
+}
+
+var _lEl=document.getElementById("ddi-labels");
+var _zEl=document.getElementById("ddi-zones");
+var LABELS=_lEl ? splitField(_lEl.innerHTML) : [];
+var zones =_zEl ? parseZones(_zEl.innerHTML) : [];
+
+var placed={};
+var raw='';
+
+// Lock image dimensions to permanently freeze layout
+function lockImageDimensions(){
+  var img = document.querySelector('#imgBox img') || document.querySelector('.img-box img');
+  var box = document.getElementById('imgBox') || document.querySelector('.img-box');
+  var arena = document.querySelector('.img-arena');
+  if(!img || !box || !arena) return;
+
+  function applyLock(){
+    var rect = img.getBoundingClientRect();
+    if(rect.height > 10 && rect.width > 10){
+      var h = Math.round(rect.height) + 'px';
+      var w = Math.round(rect.width) + 'px';
+      box.style.height = h;
+      box.style.width = w;
+      box.style.minHeight = h;
+      box.style.maxHeight = h;
+      arena.style.height = h;
+      arena.style.minHeight = h;
+    }
+  }
+
+  if(img.complete && img.naturalHeight > 0){
+    applyLock();
+  } else {
+    img.addEventListener('load', applyLock, { once: true });
+  }
+}
+lockImageDimensions();
+try{ var h=location.hash; if(h&&h.indexOf('ddi=')>=0)raw=decodeURIComponent(h.slice(h.indexOf('ddi=')+4)); }catch(e){}
+if(!raw){ try{ raw=sessionStorage.getItem('ddi')||''; }catch(e){} }
+try{ if(raw){ var parsed=JSON.parse(raw); placed=parsed.placed||{}; } }catch(e){ placed={}; }
+try{ location.hash=''; }catch(e){}
+try{ sessionStorage.removeItem('ddi'); }catch(e){}
+
+var zc=document.getElementById('zones');
+var pool=document.getElementById('pool');
+var total=0,got=0;
+
+if(zones.length === 0){
+  var emptyZ = document.createElement('div');
+  emptyZ.className = 'empty-state-badge';
+  emptyZ.textContent = 'No drop zones';
+  zc.appendChild(emptyZ);
+} else {
+  zones.forEach(function(z){
+  var dz=document.createElement('div');
+  dz.className='dz'; dz.style.left=z.x+'%'; dz.style.top=z.y+'%';
+  var userVal=placed[z.label]||'';
+  var ok=(userVal===z.label);
+  total++; if(ok)got++;
+  var chip=document.createElement('div');
+  if(userVal){
+  if(ok){
+  chip.className='chip c-ok';
+  chip.textContent=userVal;
+  dz.classList.add('dz-ok');
+  } else {
+  chip.className='chip c-err';
+  chip.innerHTML='<span class="chip-wrong">'+userVal+'</span> <span class="chip-correct">'+z.label+'</span>';
+  dz.classList.add('dz-err');
+  }
+  } else {
+  chip.className='chip c-miss';
+  chip.innerHTML='<span class="chip-correct">'+z.label+'</span>';
+  dz.classList.add('dz-err');
+  }
+  dz.appendChild(chip);
+  zc.appendChild(dz);
+  });
+}
+
+var allPlaced=Object.values(placed);
+if(pool){
+var unplacedCount = 0;
+LABELS.forEach(function(v){
+if(allPlaced.indexOf(v)<0){
+unplacedCount++;
+var c=document.createElement('div');c.className='chip';c.textContent=v;pool.appendChild(c);
+}
+});
+if(unplacedCount === 0){
+  var emptyMsg = document.createElement('div');
+  emptyMsg.className = 'empty-pool-msg';
+  emptyMsg.textContent = LABELS.length === 0 ? 'No labels' : 'No labels in pool';
+  pool.appendChild(emptyMsg);
+}
+}
+
+var pct=total?Math.round(got/total*100):0;
+var scls=pct===100?'s-ok':pct>=50?'s-mid':'s-bad';
+var sb=document.getElementById('scoreBox');
+if(sb) sb.innerHTML='<div class="score '+scls+'">'+got+' / '+total+' korrekte ('+pct+'%)</div>';
+
+setTimeout(function(){
+document.querySelectorAll('.back-fade').forEach(function(el){el.classList.add('back-fade-in');});
+},20);
+document.addEventListener('keydown',function(e){if(e.code==='Space'||e.key===' ')e.preventDefault();});
+}());
+</script>

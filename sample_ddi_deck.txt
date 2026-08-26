@@ -1,0 +1,6 @@
+#separator:tab
+#html:true
+#notetype:Drag drop Image
+#tags:anatomy neurobiology
+Title	Question	Image	Labels	Zones	Layout	Extra	Front Audio	Back Audio	Front Image	Back Image
+Neuroanatomy · Sagittal View	Drag each brain structure to its anatomical location:	<img src="brain_sagittal.jpg">	Frontal Lobe | Parietal Lobe | Occipital Lobe | Temporal Lobe | Cerebellum | Brainstem | Hippocampus	Frontal Lobe=28,34 | Parietal Lobe=55,22 | Occipital Lobe=80,44 | Temporal Lobe=42,55 | Cerebellum=74,72 | Brainstem=52,82	horizontal	The frontal lobe handles executive decisions; parietal integrates sensory inputs; cerebellum coordinates motor control.			

@@ -1,0 +1,261 @@
+<script>
+function toggleImage(btn){
+  var arena = document.getElementById('catArena');
+  var extra = document.getElementById('cat-extra-img-wrap');
+  if(!arena || !extra) return;
+  var isSwapped = extra.style.display !== 'none';
+  if(isSwapped){
+    arena.style.display = '';
+    extra.style.display = 'none';
+    if(btn) btn.classList.remove('active');
+  } else {
+    arena.style.display = 'none';
+    extra.style.display = 'flex';
+    if(btn) btn.classList.add('active');
+  }
+}
+function toggleExtra(btn){
+  var source = document.getElementById('extra-src');
+  var area = document.getElementById('extra-area');
+  if(!source || !area) return;
+  var isActive = area.classList.contains('show');
+  if(isActive){
+    area.innerHTML = '';
+    area.classList.remove('show');
+    if(btn) btn.classList.remove('active');
+  } else {
+    area.innerHTML = '<div class="extra-body">' + source.innerHTML + '</div>';
+    area.classList.add('show');
+    if(btn) btn.classList.add('active');
+  }
+}
+function toggle(id, btn){
+  if(id === 'fimg' || id === 'bimg') toggleImage(btn);
+  else toggleExtra(btn);
+}
+</script>
+<div class="vp">
+  {{#Back Image}}<div id="bimg" class="ms">{{Back Image}}</div>{{/Back Image}}
+  {{#Extra}}<div id="extra-src" class="ms">{{Extra}}</div>{{/Extra}}
+
+  <div class="ctrl">
+    {{#Back Audio}}<div class="audio-btn">{{Back Audio}}</div>{{/Back Audio}}
+    {{#Back Image}}
+    <button type="button" class="ibtn" data-label="image" onclick="toggleImage(this)" title="Image">image</button>
+    {{/Back Image}}
+    {{#Extra}}
+    <button type="button" class="ibtn" data-label="extra" onclick="toggleExtra(this)" title="Extra">extra</button>
+    {{/Extra}}
+  </div>
+
+  <span id="cat-categories" style="display:none">{{Categories}}</span>
+  <span id="cat-items" style="display:none">{{Items}}</span>
+  <span id="cat-distractors" style="display:none">{{Distractors}}</span>
+  <span id="cat-layout" style="display:none">{{Layout}}</span>
+
+  <div class="ddi-wrap cat-wrap {{#Layout}}layout-{{Layout}}{{/Layout}}">
+    <div class="upper-locked">
+      <div class="meta">{{Title}}</div>
+      <h1 class="question">{{Question}}</h1>
+      <div class="categories-arena" id="catArena"></div>
+      {{#Back Image}}<div id="cat-extra-img-wrap" class="cat-swapped-img-arena" style="display:none;">{{Back Image}}</div>{{/Back Image}}
+    </div>
+    <div class="lower-flexible">
+      <div class="label-pool" id="catPool"></div>
+      <div class="back-body">
+        <div class="section-label">Resultat</div>
+        <div id="catScoreBox"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="extra-area" class="extra-area"></div>
+</div>
+
+<script>
+(function(){
+  try {
+    var isDark = document.body.classList.contains('night_mode') || 
+                 document.body.classList.contains('nightMode') || 
+                 document.documentElement.classList.contains('night_mode') || 
+                 document.documentElement.classList.contains('nightMode');
+    if (!isDark && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.setAttribute('data-anki-light', 'true');
+    }
+  } catch(e){}
+
+  function decodeEntities(str){
+    var d = document.createElement('div');
+    d.innerHTML = str;
+    return d.textContent || d.innerText || str;
+  }
+  function stripTags(str){
+    var d = document.createElement('div');
+    d.innerHTML = str;
+    return d.textContent || d.innerText || '';
+  }
+  function splitField(str){
+    str = decodeEntities(str); str = stripTags(str);
+    var parts = str.split('|');
+    if(parts.length <= 1) parts = str.split('&#124;');
+    return parts.map(function(s){ return s.trim(); }).filter(Boolean);
+  }
+  function parseItems(str){
+    str = decodeEntities(str); str = stripTags(str);
+    var parts = str.split('|');
+    if(parts.length <= 1) parts = str.split('&#124;');
+    var result = [];
+    parts.forEach(function(p){
+      p = p.trim();
+      if(!p) return;
+      var eq = p.indexOf('=');
+      if(eq > 0){
+        result.push({ item: p.slice(0, eq).trim(), category: p.slice(eq + 1).trim() });
+      }
+    });
+    return result;
+  }
+
+  var CARD_KEY = ("{{Title}}_{{Question}}").replace(/[^a-zA-Z0-9]/g, '_');
+  var categories = splitField(document.getElementById('cat-categories')?.innerHTML || '');
+  var items = parseItems(document.getElementById('cat-items')?.innerHTML || '');
+  var distractors = splitField(document.getElementById('cat-distractors')?.innerHTML || '');
+  var rawLayout = (decodeEntities(stripTags(document.getElementById('cat-layout')?.innerHTML || '')) || 'horizontal').trim().toLowerCase();
+
+  var expectedMap = {};
+  var allValidItems = [];
+  items.forEach(function(pair){
+    expectedMap[pair.item] = pair.category;
+    allValidItems.push(pair.item);
+  });
+
+  var placed = {};
+  var raw = '';
+  try {
+    var h = location.hash;
+    if(h && h.indexOf('ddcat=') >= 0) raw = decodeURIComponent(h.slice(h.indexOf('ddcat=') + 6));
+    else if(h && h.indexOf('ddi=') >= 0) raw = decodeURIComponent(h.slice(h.indexOf('ddi=') + 4));
+  } catch(e){}
+  if(!raw){
+    try { raw = sessionStorage.getItem('ddcat_' + CARD_KEY) || sessionStorage.getItem('ddcat') || sessionStorage.getItem('ddi') || ''; } catch(e){}
+  }
+  try {
+    if(raw){
+      var parsed = JSON.parse(raw);
+      placed = parsed.placed || parsed;
+    }
+  } catch(e){ placed = {}; }
+
+  var arena = document.getElementById('catArena');
+  var pool = document.getElementById('catPool');
+  if(!arena || !pool) return;
+  arena.innerHTML = '';
+  pool.innerHTML = '';
+
+  if(rawLayout === 'vertical'){
+    arena.className = 'categories-arena cat-arena-vertical';
+  } else {
+    arena.className = 'categories-arena cat-arena-horizontal';
+  }
+
+  var total = allValidItems.length;
+  var got = 0;
+
+  // Build each category on the back with evaluated answers
+  categories.forEach(function(cat){
+    var box = document.createElement('div');
+    box.className = 'cat-box';
+
+    var header = document.createElement('div');
+    header.className = 'cat-header';
+    header.textContent = cat;
+    box.appendChild(header);
+
+    var dropArea = document.createElement('div');
+    dropArea.className = 'cat-drop-area';
+    dropArea.setAttribute('data-category', cat);
+
+    // 1. Check all items placed by user in this category
+    Object.keys(placed).forEach(function(item){
+      if(placed[item] === cat){
+        var isOk = (expectedMap[item] === cat);
+        var chip = document.createElement('div');
+        if(isOk){
+          got++;
+          chip.className = 'chip c-ok';
+          chip.textContent = item;
+        } else {
+          chip.className = 'chip c-err';
+          var correctCat = expectedMap[item];
+          if(correctCat){
+            chip.innerHTML = '<span class="chip-wrong">' + item + '</span> <span class="chip-correct">' + correctCat + '</span>';
+          } else {
+            chip.innerHTML = '<span class="chip-wrong">' + item + '</span> <span class="chip-correct">Decoy</span>';
+          }
+        }
+        dropArea.appendChild(chip);
+      }
+    });
+
+    // 2. Add missed items that should have been in this category but were not placed in this category
+    allValidItems.forEach(function(item){
+      if(expectedMap[item] === cat && placed[item] !== cat){
+        var missChip = document.createElement('div');
+        missChip.className = 'chip c-miss';
+        missChip.innerHTML = '<span class="chip-correct">' + item + '</span>';
+        dropArea.appendChild(missChip);
+      }
+    });
+
+    box.appendChild(dropArea);
+    arena.appendChild(box);
+  });
+
+  function equalizeBoxHeights(){
+    var boxes = document.querySelectorAll('.cat-box');
+    if(!boxes.length) return;
+    var maxH = 120;
+    boxes.forEach(function(b){ b.style.minHeight = ''; });
+    boxes.forEach(function(b){
+      var h = b.getBoundingClientRect().height;
+      if(h > maxH) maxH = h;
+    });
+    boxes.forEach(function(b){ b.style.minHeight = maxH + 'px'; });
+  }
+  equalizeBoxHeights();
+  window.addEventListener('resize', equalizeBoxHeights);
+
+  // Pool: show unplaced items/distractors
+  var allPoolLabels = allValidItems.concat(distractors);
+  var unplacedInPool = 0;
+  allPoolLabels.forEach(function(item){
+    if(!placed[item]){
+      unplacedInPool++;
+      var c = document.createElement('div');
+      c.className = 'chip';
+      c.style.opacity = '.6';
+      c.textContent = item;
+      pool.appendChild(c);
+    }
+  });
+
+  if(unplacedInPool === 0){
+    var emptyMsg = document.createElement('div');
+    emptyMsg.className = 'empty-pool-msg';
+    emptyMsg.textContent = allPoolLabels.length === 0 ? 'No items' : 'All items placed';
+    pool.appendChild(emptyMsg);
+  }
+
+  // Score Box evaluation
+  var pct = total ? Math.round(got / total * 100) : 0;
+  var scls = pct === 100 ? 's-ok' : (pct >= 50 ? 's-mid' : 's-bad');
+  var sb = document.getElementById('catScoreBox');
+  if(sb){
+    sb.innerHTML = '<div class="score ' + scls + '">' + got + ' / ' + total + ' korrekte (' + pct + '%)</div>';
+  }
+
+  document.addEventListener('keydown', function(e){
+    if(e.code === 'Space' || e.key === ' ') e.preventDefault();
+  });
+}());
+</script>

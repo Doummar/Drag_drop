@@ -1,0 +1,10 @@
+{
+  "package": "drag_drop_anki",
+  "name": "Drag Drop",
+  "version": "1.3.0",
+  "author": "Adel Aitah",
+  "homepage": "https://github.com/Doummar/Drag_drop",
+  "description": "Unified Drag Drop flashcards for Anki with Image Labeling (Visual Placement Studio), Category Sorting (Easy Card Creator), Horizontal & Vertical layouts, and native Light/Dark theme support.",
+  "min_point_version": 45,
+  "max_point_version": 260000
+}
