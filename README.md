@@ -10,25 +10,25 @@ It is useful for **anatomy, biology, diagrams, maps, charts, processes, language
 
 ### Image Labeling
 
-![Image labeling](https://i.postimg.cc/NfsJ0Pk9/1.gif)
+![Image labeling](https://i.postimg.cc/c4Xk9tPp/1.gif)
 
 Drag labels to the correct places on an image.
 
 ### Visual Placement
 
-![Visual placement](https://i.postimg.cc/c4FDtMFR/2.gif)
+![Visual placement]()
 
 Create and position drop zones directly on your image.
 
 ### Category Sorting
 
-![Category sorting](https://i.postimg.cc/G3MRdfWt/3.gif)
+![Category sorting](https://i.postimg.cc/pLBjYK7Z/2.gif)
 
 Sort answers into the correct categories.
 
 ### Interactive Review
 
-![Interactive review](https://i.postimg.cc/3xK1S1ZS/7.gif)
+![Interactive review](https://i.postimg.cc/zBxpd9cs/4.gif)
 
 Get feedback while actively recalling the answer.
 
