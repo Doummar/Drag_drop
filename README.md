@@ -16,7 +16,7 @@ Drag labels to the correct places on an image.
 
 ### Visual Placement
 
-![Visual placement]()
+
 
 Create and position drop zones directly on your image.
 
