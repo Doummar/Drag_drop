@@ -1185,13 +1185,30 @@ var _zonesEl = document.getElementById(\"ddi-zones\");
 var LABELS = _labelsEl ? splitField(_labelsEl.innerHTML) : [];
 var zones = _zonesEl ? parseZones(_zonesEl.innerHTML) : [];
 
-// Clear stale hash
+// Restore previously-placed items if Anki redrew this same question (e.g.
+// after Mark Note or another note-text change elsewhere) using the same
+// {key, placed} data save() already writes below. Falls back to
+// sessionStorage. Leftover data from a different card (or no data at all)
+// is ignored and the hash cleared, exactly as before.
+var restoredPlaced = {};
 try{
+var _raw = '';
 if(location.hash.startsWith('#ddi=')){
-var old=JSON.parse(decodeURIComponent(location.hash.slice(5)));
-if(old.key!==CARD_KEY) location.hash='';
-} else { location.hash=''; }
-}catch(e){ location.hash=''; }
+  _raw = decodeURIComponent(location.hash.slice(5));
+} else {
+  try{ _raw = sessionStorage.getItem('ddi') || ''; }catch(e){}
+}
+if(_raw){
+  var old = JSON.parse(_raw);
+  if(old.key === CARD_KEY){
+    restoredPlaced = old.placed || {};
+  } else {
+    location.hash = '';
+  }
+} else {
+  location.hash = '';
+}
+}catch(e){ location.hash=''; restoredPlaced = {}; }
 
 function shuffle(a){
 a=a.slice();
@@ -1213,12 +1230,27 @@ if(zones.length === 0){
   var cue=document.createElement('span');
   cue.className='dz-empty-cue';
   dz.appendChild(cue);
+  var restoredVal=restoredPlaced[z.label];
+  if(restoredVal){
+    var rc=document.createElement('div');
+    rc.className='chip'; rc.draggable=true; rc.dataset.v=restoredVal; rc.textContent=restoredVal;
+    dz.appendChild(rc);
+  }
   zc.appendChild(dz);
   });
 }
 
 var pool=document.getElementById('pool');
+var _restoredCounts={};
+Object.keys(restoredPlaced).forEach(function(k){
+var v=restoredPlaced[k];
+_restoredCounts[v]=(_restoredCounts[v]||0)+1;
+});
 shuffle(LABELS).forEach(function(v){
+if(_restoredCounts[v] > 0){
+  _restoredCounts[v]--;
+  return;
+}
 var c=document.createElement('div');
 c.className='chip'; c.draggable=true; c.dataset.v=v; c.textContent=v;
 pool.appendChild(c);
@@ -2988,6 +3020,26 @@ function _catInit(){
   }
 
   var CARD_KEY = (\"{{Title}}_{{Question}}\").replace(/[^a-zA-Z0-9]/g, '_');
+
+  // Restore previously-placed items if Anki redrew this same question (e.g.
+  // after Mark Note or another note-text change elsewhere), using the same
+  // {key, placed} data saveState() already writes below. Mirrors the read
+  // pattern category_back.html uses, but only restores when the stored key
+  // matches this exact card, so a different/new card never inherits it.
+  var restoredPlaced = {};
+  try {
+    var _raw = '';
+    var _h = location.hash;
+    if(_h && _h.indexOf('ddcat=') >= 0) _raw = decodeURIComponent(_h.slice(_h.indexOf('ddcat=') + 6));
+    else if(_h && _h.indexOf('ddi=') >= 0) _raw = decodeURIComponent(_h.slice(_h.indexOf('ddi=') + 4));
+    if(!_raw){
+      try { _raw = sessionStorage.getItem('ddcat_' + CARD_KEY) || sessionStorage.getItem('ddcat') || sessionStorage.getItem('ddi') || ''; } catch(e){}
+    }
+    if(_raw){
+      var _parsed = JSON.parse(_raw);
+      if(_parsed.key === CARD_KEY) restoredPlaced = _parsed.placed || {};
+    }
+  } catch(e){ restoredPlaced = {}; }
   var categories = splitField(document.getElementById('cat-categories')?.innerHTML || '');
   var items = parseItems(document.getElementById('cat-items')?.innerHTML || '');
   var distractors = splitField(document.getElementById('cat-distractors')?.innerHTML || '');
@@ -3015,7 +3067,7 @@ function _catInit(){
     arena.className = 'categories-arena cat-arena-horizontal';
   }
 
-  var placedState = {};
+  var placedState = restoredPlaced;
   var history = [];
   var selectedChip = null;
   var draggedItem = null;
@@ -3172,7 +3224,10 @@ function _catInit(){
       });
 
       if(placedCat){
-        var targetArea = document.querySelector('.cat-drop-area[data-category=\"' + placedCat + '\"]');
+        var targetArea = null;
+        document.querySelectorAll('.cat-drop-area').forEach(function(da){
+          if(da.getAttribute('data-category') === placedCat) targetArea = da;
+        });
         if(targetArea) targetArea.appendChild(chip);
       } else {
         unplacedCount++;
