@@ -146,6 +146,16 @@ function toggle(id, btn){
     }
   } catch(e){ placed = {}; }
 
+  // Invalidate Category Sorting placement storage now that the answer has
+  // been read for grading, so a later review of this same card starts
+  // empty instead of restoring these placements. Mirrors the cleanup the
+  // sibling ddi (Image Labeling) back template already performs after it
+  // reads its own placement state.
+  try{ location.hash=''; }catch(e){}
+  try{ sessionStorage.removeItem('ddcat'); }catch(e){}
+  try{ sessionStorage.removeItem('ddcat_' + CARD_KEY); }catch(e){}
+  try{ sessionStorage.removeItem('ddi'); }catch(e){}
+
   var arena = document.getElementById('catArena');
   var pool = document.getElementById('catPool');
   if(!arena || !pool) return;
